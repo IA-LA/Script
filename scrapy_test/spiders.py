@@ -26,8 +26,10 @@ class ExtensionSpider(scrapy.Spider):
     # el método con nombre "start_requests". Este método, si no se sobreescribe, descarga todas las urls
     # incluidas en start_urls y realiza la extracción indicada por el método con nombre "parse".
 
-    # En este caso no hace falta definirlo, pues sólo tenemos una url de partida
+    # En este caso no hace falta definirlo, pues sólo tenemos una url de partida. Pero si es necesario se reescribe:
     # def start_requests(self):
+    #   Por cada request:
+    #       yield scrapy.Request(url=url_request, callback=self.parse) # ó callback = metodo que quieras
 
     def parse(self, response):
         """ El método por defecto para procesar las requests es el que tiene el nombre 'parse'.
@@ -39,12 +41,12 @@ class ExtensionSpider(scrapy.Spider):
 
         # Recupero los campos de cada actividad
         for i, elemento in enumerate(elementos_actividad):
-            nombre_elemento = elemento.find("div", {"class": "titulo"}).get_text()
-            centro_elemento = elemento.find("a", {"class": "centro"}).get_text()
+            nombre_elemento = elemento.find("div", {"class": "titulo"}).get_text().strip()
+            centro_elemento = elemento.find("a", {"class": "centro"}).get_text().strip()
             enlace_elemento = elemento.find("div", {"class": "titulo"}).a["href"]
 
             # El id son los números que aparecen después de la última ocurrencia del caracter "/":
-            id_actividad = enlace_elemento[enlace_elemento.rfind("/"):]
+            id_actividad = enlace_elemento[enlace_elemento.rfind("/")+1:]
 
             # Genero un nevo ExtensionItem con los datos recopilados hasta ahora
             item = ExtensionItem({"nombre": nombre_elemento, "id": id_actividad, "centro": centro_elemento})
@@ -63,13 +65,15 @@ class ExtensionSpider(scrapy.Spider):
 
         # Proceso el html de la nueva página descargada
         html = BeautifulSoup(response.body_as_unicode(), "html5lib")
-        actividad = html.find("div",{"id": "principal"}).find("dl", {"id": "actividad"}).find("dl", {"id": ""},
-                                                                                              recursive=False)
+        actividad = html.find("div",{"id": "principal"}).find("dl", {"id": "actividad"}).find("dl", recursive=False)
         # print(actividad)
         hijos = actividad.find_all(recursive=False)
         for i, hijo in enumerate(hijos):
             if "Dirigido por" == hijo.get_text().strip():
-                print(hijos[i+1].get_text().strip())
+                nombre_director = hijos[i+1].find("dl",{"id":"ponencias"}).\
+                    find("",{"itemprop":"name"}).get_text().strip()
+                item.update({"director":nombre_director})
+        yield item
 
 
 class ExtensionPipeline(object):
@@ -87,12 +91,18 @@ class ExtensionPipeline(object):
         # Tengo acceso a la spider que ha generado el ítem, en este caso sólo hay una spider, así que lo siguiente
         # no es necesario
         # if spider.name == "entity_linking":
-        print("P : ", item)
-        return item
+        # print("ITEM EN PIPELINE : ", item)
+        json_item = json.dumps(item.__dict__, ensure_ascii=False)
+        print("JSON : ", json_item)
+        # Aqui podrias almacenar el json en una bd o hacer append en un fichero
+        return
 
 
 class ExtensionItem(scrapy.Item):
-        nombre = scrapy.Field()
-        id = scrapy.Field()
-        centro = scrapy.Field()
-        texto = scrapy.Field()
+    """Este es el modelo de datos de tus ítems
+    https://docs.scrapy.org/en/latest/topics/items.html#declaring-items
+    """
+    nombre = scrapy.Field()
+    id = scrapy.Field()
+    centro = scrapy.Field()
+    director = scrapy.Field()
